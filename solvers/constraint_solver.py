@@ -1,4 +1,8 @@
 from itertools import combinations
+from solvers.scoring import group_score
+
+# Memoization dictionary to store previously computed results for specific sets of remaining words
+memo = {}
 
 # Generate candidate groups of 4 words based on their pairwise similarity
 def generate_candidate_groups(words, similarity):
@@ -22,9 +26,17 @@ def generate_candidate_groups(words, similarity):
     return candidates
 
 # Recursive backtracking explores different possible groupings before decidng which combination is best
-def solve(remaining_words, similarity):
+def solve(remaining_words, similarity, memo=None):
+    if memo is None:
+        memo = {}
+    
+    # Check if the current set of remaining words has already been computed and stored in memo
+    if remaining_words in memo:
+        return memo[remaining_words]
+    
     # Base case: Ends the recursion when no remaining words are left
     if not remaining_words:
+        memo[remaining_words] = (0, [])
         return 0, []
     
     # Take the first word from the remaining words list to avoid redundant computation
@@ -36,6 +48,7 @@ def solve(remaining_words, similarity):
     
     # Generate candidate groups that include the first word
     for others in combinations(remaining_words[1:], 3):
+        # Create a group consisting of the first word and the other three selected words
         group = (first_word,) + others
         
         # Update the remaining words by removing the current group
@@ -44,8 +57,8 @@ def solve(remaining_words, similarity):
             if word not in group
         )
 
-        # Recursively solve the remaining words to get best possible scores and groups
-        remaining_score, remaining_groups = solve(remaining, similarity)
+        # Pause the current fucntion call and start executing the new function call with the updated remaining words
+        remaining_score, remaining_groups = solve(remaining, similarity, memo)
         
         # Calculate the total score for the current group and the remaining groups
         total_score = (
@@ -57,21 +70,9 @@ def solve(remaining_words, similarity):
         if total_score > best_score:
             best_score = total_score
             best_groups = [group] + remaining_groups
+    
+    # Store the best score and corresponding groups for the current set of remaining words in memo
+    memo[remaining_words] = (best_score, best_groups)
 
     return best_score, best_groups
-        
-        
-
-# Calculate the average pairwise similarity for a given group of words
-def group_score(group, similarity):
-    pairs = list(combinations(group, 2))
-    
-    # Calculate the total similarity for all pairs in the group
-    # Similarity matrix where similarity[i][j] represents the similarity between the i-th and j-th word in the group
-    total = sum(
-        similarity[i][j] for i, j in pairs
-    )
-    
-    # Return the average similarity for the group
-    return total / len(pairs)
     

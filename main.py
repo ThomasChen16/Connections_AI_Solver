@@ -1,8 +1,12 @@
 """Simple semantic-similarity baseline for a 16-word Connections-style puzzle."""
 from itertools import combinations # generate all possible combinations
 import numpy as np
-from sentence_transformers import SentenceTransformer # Model for generating sentence embeddings
-from constraint_solver import solve
+from solvers.greedy_solver import greedy_groups
+from solvers.constraint_solver import solve
+from solvers.scoring import group_score
+from models.minilm import load_model_minilm
+from models.qwen3 import load_model_qwen3
+
 
 # Example words datasets for the puzzle
 WORDS_SAMPLE1 = [
@@ -68,36 +72,15 @@ WORDS_SAMPLE8 = [
 ]
 
 
-def similarity_matrix(words: list[str], model: SentenceTransformer) -> np.ndarray:
+def similarity_matrix(words: list[str], model) -> np.ndarray:
     # Normalized embeddings to 16x16 matrix
     embeddings = model.encode(words, normalize_embeddings=True)
-    # Return the similarity matrix as a NumPy array
-    return np.asarray(embeddings) @ np.asarray(embeddings).T
-
-
-def group_score(indices: tuple[int, ...], similarity: np.ndarray) -> float:
-    # Return the mean pairwise cosine similarity of the six pairs in a group of four.
-    # Calculate pairwise similarities because cosine similarity compares two vectors at a time and then we average them for the group
-    return float(np.mean([similarity[i, j] for i, j in combinations(indices, 2)]))
-
-
-def greedy_groups(words: list[str], similarity: np.ndarray) -> list[tuple[tuple[int, ...], float]]:
-    # Baseline: choose highest-scoring 4-word group, then repeat.
-    # Remaining is the set of words indices that haven't been assigned to a group
-    remaining = set(range(len(words)))
-    result = []
-    # While remaining is not empty, keep selecting the best group of 4 words
-    while remaining:
-        choices = combinations(sorted(remaining), 4)
-        # Keep track of the best group found so far
-        best = max(choices, key=lambda g: group_score(g, similarity))
-        # Calculate the score of the best group found so far
-        score = group_score(best, similarity)
-        result.append((best, score))
-        # Update remaining by removing the words that have been assigned to the best group
-        remaining.difference_update(best)
-    return result
-
+    
+    # Convert embeddings into an NumPy array
+    embeddings = np.asarray(embeddings)
+    
+    # Calculate the cosine similarity matrix by multiplying the embeddings with their transpose
+    return embeddings @ embeddings.T
 
 def main() -> None:
     samples = [
@@ -106,8 +89,28 @@ def main() -> None:
         ("Sample 7 (common phrases)", WORDS_SAMPLE7),
         ("Sample 8 (less-obvious synonyms)", WORDS_SAMPLE8),
     ]
-    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-
+    
+    test_words = [
+    "apple, a type of fruit",
+    "banana, a type of fruit",
+    "car, a type of vehicle",
+    "truck, a type of vehicle"
+    ]
+    
+    # Load the MiniLM model for generating sentence embeddings
+    models = {
+        "MiniLM": load_model_minilm(),
+        "Qwen3": load_model_qwen3()
+    }
+    for name, model in models.items():
+        similarity = similarity_matrix(test_words, model)
+    
+        print(f"\n{name}:")
+        print(f"Apple-Banana: {similarity[0][1]:.4f}")
+        print(f"Car-Truck: {similarity[2][3]:.4f}")
+        print(f"Apple-Car: {similarity[0][2]:.4f}")
+        print(f"Banana-Truck: {similarity[1][3]:.4f}")
+    """
     for sample_name, words in samples:
         print(f"\n{'=' * 20} {sample_name} {'=' * 20}")
         if len(words) != 16 or len(set(words)) != 16:
@@ -154,7 +157,7 @@ def main() -> None:
         print(f"  Greedy:     {greedy_total:.3f}")
         print(f"  Backtracking: {best_score:.3f}")
         print(f"  Improvement:  {best_score - greedy_total:+.3f}")
-        
+    """
 
 if __name__ == "__main__":
     main()
